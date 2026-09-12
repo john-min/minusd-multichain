@@ -64,6 +64,10 @@ jobs:
         working-directory: solana
         run: yarn install --frozen-lockfile
 
+      - name: Make scripts executable
+        working-directory: solana
+        run: chmod +x scripts/prepare-keys.sh scripts/test.sh
+
       - name: Anchor test
         working-directory: solana
         run: yarn test

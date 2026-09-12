@@ -13,7 +13,8 @@ solana/
   package.json
   programs/minusd/src/   # lib.rs + state.rs + errors.rs
   tests/minusd.ts        # Anchor + TypeScript test client (not the Phase 3 CLI)
-  keys/minusd-keypair.json
+  keys/README.md         # keypairs are gitignored; prepare-keys.sh generates locally
+  scripts/prepare-keys.sh
   scripts/test.sh
 docs/adr/0001-spl-token-not-token-2022.md
 docs/evm-vs-solana.md
@@ -33,10 +34,11 @@ Native Anchor program. Persistent state lives in PDAs and SPL token accounts; th
 | MINUSD mint | `[b"minusd_mint"]` — 6 decimals; mint + freeze authority = vault authority |
 | Vault token account | `[b"vault"]` — MockUSDC; authority = vault authority |
 | FrozenOwner PDA | `[b"frozen", owner]` — owner-level flag used on acquire/redeem |
+| ProgramData | BPF upgradeable loader PDA for this program — used to authorize `initialize` |
 
 ### Instructions
 
-- `initialize(admin, pauser, compliance)` — one-time setup; creates mints and vault.
+- `initialize(admin, pauser, compliance)` — one-time setup; creates mints and vault. **Payer must be the program's BPF upgrade authority** (blocks first-caller takeover).
 - `mint_mock_usdc(amount)` — public test faucet. No monetary value.
 - `acquire(amount)` — caller’s MockUSDC token account → vault (CPI transfer); program mints the same nominal MINUSD to the recipient token account. **No ERC-20 approve.** Caller is the MockUSDC token-account owner and signs.
 - `redeem(amount)` — burn caller MINUSD, then CPI-transfer the same nominal MockUSDC from the vault.

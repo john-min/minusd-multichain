@@ -7,6 +7,7 @@
 //! imports resolve. Helpers stay in `state` / `errors`.
 
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::bpf_loader_upgradeable;
 use anchor_spl::token::{
     self, Burn, FreezeAccount, Mint, MintTo, ThawAccount, Token, TokenAccount, TransferChecked,
 };
@@ -17,7 +18,11 @@ pub mod state;
 use errors::MinUsdError;
 use state::{Config, FrozenOwner};
 
-declare_id!("fLsZq7gE9KmSGPm5CR78FcfGtfvFGXR2kYPtsrbxNRw");
+// Bootstrap ID only. `scripts/prepare-keys.sh` generates a gitignored keypair and
+// runs `anchor keys sync` before build/test. Never commit program keypairs.
+// The previous ID (fLsZq7…NRw) is retired: its secret was published and must not
+// be used on Devnet or any shared cluster.
+declare_id!("7fyK8h8CGpPYjLhvNGWWbA2TccaSx69EvRLxQrJsSWMh");
 
 pub const TOKEN_DECIMALS: u8 = 6;
 pub const CONFIG_SEED: &[u8] = b"config";
@@ -370,8 +375,19 @@ pub struct AccountUnfrozen {
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
+    /// Must be this program's BPF upgrade authority. Prevents first-caller takeover.
     #[account(mut)]
     pub payer: Signer<'info>,
+
+    /// Programdata account for this upgradeable program (`[program_id]` PDA).
+    #[account(
+        seeds = [crate::ID.as_ref()],
+        bump,
+        seeds::program = bpf_loader_upgradeable::ID,
+        constraint = program_data.upgrade_authority_address == Some(payer.key())
+            @ MinUsdError::Unauthorized
+    )]
+    pub program_data: Account<'info, ProgramData>,
 
     #[account(
         init,
@@ -555,7 +571,7 @@ pub struct Pause<'info> {
         mut,
         seeds = [CONFIG_SEED],
         bump = config.bump,
-        has_one = pauser
+        has_one = pauser @ MinUsdError::Unauthorized
     )]
     pub config: Account<'info, Config>,
 }
@@ -568,7 +584,7 @@ pub struct Unpause<'info> {
         mut,
         seeds = [CONFIG_SEED],
         bump = config.bump,
-        has_one = pauser
+        has_one = pauser @ MinUsdError::Unauthorized
     )]
     pub config: Account<'info, Config>,
 }
@@ -582,7 +598,7 @@ pub struct Freeze<'info> {
         seeds = [CONFIG_SEED],
         bump = config.bump,
         has_one = minusd_mint,
-        has_one = compliance
+        has_one = compliance @ MinUsdError::Unauthorized
     )]
     pub config: Account<'info, Config>,
 
@@ -624,7 +640,7 @@ pub struct Unfreeze<'info> {
         seeds = [CONFIG_SEED],
         bump = config.bump,
         has_one = minusd_mint,
-        has_one = compliance
+        has_one = compliance @ MinUsdError::Unauthorized
     )]
     pub config: Account<'info, Config>,
 
@@ -662,7 +678,7 @@ pub struct SetPauser<'info> {
         mut,
         seeds = [CONFIG_SEED],
         bump = config.bump,
-        has_one = admin
+        has_one = admin @ MinUsdError::Unauthorized
     )]
     pub config: Account<'info, Config>,
 }
@@ -675,7 +691,7 @@ pub struct SetCompliance<'info> {
         mut,
         seeds = [CONFIG_SEED],
         bump = config.bump,
-        has_one = admin
+        has_one = admin @ MinUsdError::Unauthorized
     )]
     pub config: Account<'info, Config>,
 }

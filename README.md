@@ -127,14 +127,15 @@ cd solana
 yarn install
 yarn test
 # equivalent: ./scripts/test.sh
-# equivalent: mkdir -p target/deploy && cp keys/minusd-keypair.json target/deploy/minusd-keypair.json && anchor test
 ```
 
-`yarn test` copies the committed program identity keypair into `target/deploy/` (gitignored) so `declare_id!` matches, then runs `anchor test` against `solana-test-validator`.
+`yarn test` runs `scripts/prepare-keys.sh`, which generates a **gitignored** local program keypair if needed, copies it to `target/deploy/`, and runs `anchor keys sync` so `declare_id!` matches. Then it runs `anchor test` against `solana-test-validator`.
+
+Never commit `*-keypair.json`. The previously published program identity is retired and must not be used on Devnet.
 
 ## How the Solana lifecycle works
 
-1. `initialize` creates the MockUSDC mint, MINUSD mint, vault token account, and config PDA.
+1. `initialize` (callable only by the program's BPF **upgrade authority**) creates the MockUSDC mint, MINUSD mint, vault token account, and config PDA.
 2. `mint_mock_usdc` is the public test faucet.
 3. `acquire` — the caller signs; the program CPIs an SPL transfer of MockUSDC into the vault and mints the same nominal MINUSD. No approve instruction.
 4. Transfer MINUSD with a normal `spl_token::transfer`. Pause does not block this.
@@ -149,11 +150,13 @@ Live deploy is **not** required. Local `anchor test` is the acceptance bar. If y
 solana config set --url devnet
 solana airdrop 2
 cd solana
+# Generate an offline Devnet program keypair outside the repo, place it at
+# keys/minusd-keypair.json (gitignored), then:
 yarn prepare-keys
 anchor deploy --provider.cluster devnet
 ```
 
-Skip this if `id.json` is missing or unfunded. Never commit that keypair.
+Skip this if `id.json` is missing or unfunded. Never commit that keypair or any shared-cluster program identity secret.
 
 ## How freeze actually works
 

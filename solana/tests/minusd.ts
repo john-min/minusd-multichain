@@ -4,7 +4,6 @@ import {
   TOKEN_PROGRAM_ID,
   createTransferInstruction,
   getAccount,
-  getAssociatedTokenAddressSync,
   getMint,
   getOrCreateAssociatedTokenAccount,
 } from "@solana/spl-token";
@@ -14,6 +13,20 @@ import { Minusd } from "../target/types/minusd";
 
 const UNIT = 1_000_000;
 const TOKEN_PROGRAM = TOKEN_PROGRAM_ID;
+const BPF_LOADER_UPGRADEABLE = new PublicKey(
+  "BPFLoaderUpgradeab1e11111111111111111111111"
+);
+
+async function expectRejected(promise: Promise<unknown>): Promise<unknown> {
+  let rejected: unknown = null;
+  try {
+    await promise;
+  } catch (err) {
+    rejected = err;
+  }
+  expect(rejected, "instruction should reject").to.not.equal(null);
+  return rejected;
+}
 
 describe("minusd lifecycle", () => {
   const provider = anchor.AnchorProvider.env();
@@ -50,6 +63,10 @@ describe("minusd lifecycle", () => {
     [Buffer.from("minusd_mint")],
     program.programId
   );
+  const [programData] = PublicKey.findProgramAddressSync(
+    [program.programId.toBuffer()],
+    BPF_LOADER_UPGRADEABLE
+  );
 
   let aliceUsdc: PublicKey;
   let aliceMinusd: PublicKey;
@@ -83,7 +100,7 @@ describe("minusd lifecycle", () => {
     expect(vaultBal, "vault MockUSDC != MINUSD supply").to.equal(supply);
   }
 
-  async function faucet(owner: Keypair, ata: PublicKey, amount: number): Promise<void> {
+  async function faucet(ata: PublicKey, amount: number): Promise<void> {
     await program.methods
       .mintMockUsdc(new BN(amount))
       .accounts({
@@ -96,7 +113,26 @@ describe("minusd lifecycle", () => {
       .rpc();
   }
 
-  async function acquire(caller: Keypair, callerUsdcAta: PublicKey, recipientAta: PublicKey, amount: number) {
+  function initializeAccounts(initPayer: PublicKey) {
+    return {
+      payer: initPayer,
+      programData,
+      config: configPda,
+      vaultAuthority,
+      mockUsdcMint,
+      minusdMint,
+      vault,
+      tokenProgram: TOKEN_PROGRAM,
+      systemProgram: SystemProgram.programId,
+    };
+  }
+
+  async function acquire(
+    caller: Keypair,
+    callerUsdcAta: PublicKey,
+    recipientAta: PublicKey,
+    amount: number
+  ) {
     const recipientOwner = (await getAccount(connection, recipientAta)).owner;
     return program.methods
       .acquire(new BN(amount))
@@ -117,7 +153,12 @@ describe("minusd lifecycle", () => {
       .rpc();
   }
 
-  async function redeem(caller: Keypair, callerMinusdAta: PublicKey, recipientUsdcAta: PublicKey, amount: number) {
+  async function redeem(
+    caller: Keypair,
+    callerMinusdAta: PublicKey,
+    recipientUsdcAta: PublicKey,
+    amount: number
+  ) {
     const recipientOwner = (await getAccount(connection, recipientUsdcAta)).owner;
     return program.methods
       .redeem(new BN(amount))
@@ -138,7 +179,12 @@ describe("minusd lifecycle", () => {
       .rpc();
   }
 
-  async function transferMinusd(from: Keypair, fromAta: PublicKey, toAta: PublicKey, amount: number) {
+  async function transferMinusd(
+    from: Keypair,
+    fromAta: PublicKey,
+    toAta: PublicKey,
+    amount: number
+  ) {
     const tx = new Transaction().add(
       createTransferInstruction(fromAta, toAta, from.publicKey, amount)
     );
@@ -196,26 +242,35 @@ describe("minusd lifecycle", () => {
       airdrop(stranger.publicKey),
     ]);
 
+    // First-caller takeover must fail: only the upgrade authority may initialize.
+    const unauthorized = await expectRejected(
+      program.methods
+        .initialize(stranger.publicKey, stranger.publicKey, stranger.publicKey)
+        .accounts(initializeAccounts(stranger.publicKey))
+        .signers([stranger])
+        .rpc()
+    );
+    expectAnchorCode(unauthorized, "Unauthorized");
+
     await program.methods
       .initialize(admin, pauser.publicKey, compliance.publicKey)
-      .accounts({
-        payer: admin,
-        config: configPda,
-        vaultAuthority,
-        mockUsdcMint,
-        minusdMint,
-        vault,
-        tokenProgram: TOKEN_PROGRAM,
-        systemProgram: SystemProgram.programId,
-      })
+      .accounts(initializeAccounts(admin))
       .rpc();
 
-    aliceUsdc = (await getOrCreateAssociatedTokenAccount(connection, payer, mockUsdcMint, alice.publicKey)).address;
-    aliceMinusd = (await getOrCreateAssociatedTokenAccount(connection, payer, minusdMint, alice.publicKey)).address;
-    bobUsdc = (await getOrCreateAssociatedTokenAccount(connection, payer, mockUsdcMint, bob.publicKey)).address;
-    bobMinusd = (await getOrCreateAssociatedTokenAccount(connection, payer, minusdMint, bob.publicKey)).address;
+    aliceUsdc = (
+      await getOrCreateAssociatedTokenAccount(connection, payer, mockUsdcMint, alice.publicKey)
+    ).address;
+    aliceMinusd = (
+      await getOrCreateAssociatedTokenAccount(connection, payer, minusdMint, alice.publicKey)
+    ).address;
+    bobUsdc = (
+      await getOrCreateAssociatedTokenAccount(connection, payer, mockUsdcMint, bob.publicKey)
+    ).address;
+    bobMinusd = (
+      await getOrCreateAssociatedTokenAccount(connection, payer, minusdMint, bob.publicKey)
+    ).address;
 
-    await faucet(alice, aliceUsdc, 1_000 * UNIT);
+    await faucet(aliceUsdc, 1_000 * UNIT);
   });
 
   it("decimals are 6 on both mints", async () => {
@@ -252,37 +307,32 @@ describe("minusd lifecycle", () => {
   });
 
   it("unauthorized admin, pause, and freeze fail", async () => {
-    try {
-      await program.methods
+    let err = await expectRejected(
+      program.methods
         .setPauser(stranger.publicKey)
         .accounts({
           admin: stranger.publicKey,
           config: configPda,
         })
         .signers([stranger])
-        .rpc();
-      expect.fail("stranger setPauser should fail");
-    } catch (err) {
-      // has_one = admin constraint, not a custom Unauthorized
-      expect(String(err)).to.match(/has_one|ConstraintHasOne|2001/i);
-    }
+        .rpc()
+    );
+    expectAnchorCode(err, "Unauthorized");
 
-    try {
-      await program.methods
+    err = await expectRejected(
+      program.methods
         .pause()
         .accounts({
           pauser: stranger.publicKey,
           config: configPda,
         })
         .signers([stranger])
-        .rpc();
-      expect.fail("stranger pause should fail");
-    } catch (err) {
-      expect(String(err)).to.match(/has_one|ConstraintHasOne|2001/i);
-    }
+        .rpc()
+    );
+    expectAnchorCode(err, "Unauthorized");
 
-    try {
-      await program.methods
+    err = await expectRejected(
+      program.methods
         .freeze()
         .accounts({
           compliance: stranger.publicKey,
@@ -296,11 +346,9 @@ describe("minusd lifecycle", () => {
           systemProgram: SystemProgram.programId,
         })
         .signers([stranger])
-        .rpc();
-      expect.fail("stranger freeze should fail");
-    } catch (err) {
-      expect(String(err)).to.match(/has_one|ConstraintHasOne|2001/i);
-    }
+        .rpc()
+    );
+    expectAnchorCode(err, "Unauthorized");
   });
 
   it("pause blocks acquire and redeem but not SPL transfers", async () => {
@@ -312,19 +360,8 @@ describe("minusd lifecycle", () => {
       .signers([pauser])
       .rpc();
 
-    try {
-      await acquire(alice, aliceUsdc, aliceMinusd, 10 * UNIT);
-      expect.fail("paused acquire should fail");
-    } catch (err) {
-      expectAnchorCode(err, "Paused");
-    }
-
-    try {
-      await redeem(alice, aliceMinusd, aliceUsdc, 10 * UNIT);
-      expect.fail("paused redeem should fail");
-    } catch (err) {
-      expectAnchorCode(err, "Paused");
-    }
+    expectAnchorCode(await expectRejected(acquire(alice, aliceUsdc, aliceMinusd, 10 * UNIT)), "Paused");
+    expectAnchorCode(await expectRejected(redeem(alice, aliceMinusd, aliceUsdc, 10 * UNIT)), "Paused");
 
     const bobBefore = await tokenBalance(bobMinusd);
     await transferMinusd(alice, aliceMinusd, bobMinusd, 10 * UNIT);
@@ -346,52 +383,39 @@ describe("minusd lifecycle", () => {
     await acquire(alice, aliceUsdc, aliceMinusd, 80 * UNIT);
     await freezeOwner(alice.publicKey, aliceMinusd);
 
-    try {
-      await acquire(alice, aliceUsdc, bobMinusd, 10 * UNIT);
-      expect.fail("frozen caller acquire should fail");
-    } catch (err) {
-      expectAnchorCode(err, "AccountIsFrozen");
-    }
+    expectAnchorCode(
+      await expectRejected(acquire(alice, aliceUsdc, bobMinusd, 10 * UNIT)),
+      "AccountIsFrozen"
+    );
 
-    try {
-      await transferMinusd(alice, aliceMinusd, bobMinusd, UNIT);
-      expect.fail("frozen sender transfer should fail");
-    } catch (err) {
-      expect(String(err)).to.match(/frozen|0x11|17/i);
-    }
+    const frozenTransfer = await expectRejected(
+      transferMinusd(alice, aliceMinusd, bobMinusd, UNIT)
+    );
+    expect(String(frozenTransfer)).to.match(/frozen|0x11|17/i);
 
-    try {
-      await redeem(alice, aliceMinusd, aliceUsdc, UNIT);
-      expect.fail("frozen caller redeem should fail");
-    } catch (err) {
-      expectAnchorCode(err, "AccountIsFrozen");
-    }
+    expectAnchorCode(
+      await expectRejected(redeem(alice, aliceMinusd, aliceUsdc, UNIT)),
+      "AccountIsFrozen"
+    );
 
     await unfreezeOwner(alice.publicKey, aliceMinusd);
     await acquire(alice, aliceUsdc, aliceMinusd, 10 * UNIT);
 
     await freezeOwner(bob.publicKey, bobMinusd);
 
-    try {
-      await transferMinusd(alice, aliceMinusd, bobMinusd, UNIT);
-      expect.fail("frozen recipient transfer should fail");
-    } catch (err) {
-      expect(String(err)).to.match(/frozen|0x11|17/i);
-    }
+    const frozenRecipient = await expectRejected(
+      transferMinusd(alice, aliceMinusd, bobMinusd, UNIT)
+    );
+    expect(String(frozenRecipient)).to.match(/frozen|0x11|17/i);
 
-    try {
-      await acquire(alice, aliceUsdc, bobMinusd, 10 * UNIT);
-      expect.fail("frozen recipient acquire should fail");
-    } catch (err) {
-      expectAnchorCode(err, "AccountIsFrozen");
-    }
-
-    try {
-      await redeem(alice, aliceMinusd, bobUsdc, UNIT);
-      expect.fail("frozen recipient redeem should fail");
-    } catch (err) {
-      expectAnchorCode(err, "AccountIsFrozen");
-    }
+    expectAnchorCode(
+      await expectRejected(acquire(alice, aliceUsdc, bobMinusd, 10 * UNIT)),
+      "AccountIsFrozen"
+    );
+    expectAnchorCode(
+      await expectRejected(redeem(alice, aliceMinusd, bobUsdc, UNIT)),
+      "AccountIsFrozen"
+    );
 
     await unfreezeOwner(bob.publicKey, bobMinusd);
   });
@@ -402,19 +426,11 @@ describe("minusd lifecycle", () => {
     const supply = await mintSupply(minusdMint);
     const vaultBal = await tokenBalance(vault);
 
-    try {
-      await redeem(alice, aliceMinusd, aliceUsdc, aliceMin + UNIT);
-      expect.fail("over-redeem should fail");
-    } catch (err) {
-      expect(String(err)).to.match(/insufficient|0x1\b/i);
-    }
+    const overRedeem = await expectRejected(redeem(alice, aliceMinusd, aliceUsdc, aliceMin + UNIT));
+    expect(String(overRedeem)).to.match(/insufficient|0x1\b/i);
 
-    try {
-      await acquire(alice, aliceUsdc, aliceMinusd, aliceU + UNIT);
-      expect.fail("over-acquire should fail");
-    } catch (err) {
-      expect(String(err)).to.match(/insufficient|0x1\b/i);
-    }
+    const overAcquire = await expectRejected(acquire(alice, aliceUsdc, aliceMinusd, aliceU + UNIT));
+    expect(String(overAcquire)).to.match(/insufficient|0x1\b/i);
 
     expect(await tokenBalance(aliceMinusd)).to.equal(aliceMin);
     expect(await tokenBalance(aliceUsdc)).to.equal(aliceU);
@@ -424,34 +440,13 @@ describe("minusd lifecycle", () => {
   });
 
   it("zero amount and invalid accounts fail", async () => {
-    try {
-      await acquire(alice, aliceUsdc, aliceMinusd, 0);
-      expect.fail("zero acquire should fail");
-    } catch (err) {
-      expectAnchorCode(err, "ZeroAmount");
-    }
-
-    try {
-      await redeem(alice, aliceMinusd, aliceUsdc, 0);
-      expect.fail("zero redeem should fail");
-    } catch (err) {
-      expectAnchorCode(err, "ZeroAmount");
-    }
-
-    try {
-      await faucet(alice, aliceUsdc, 0);
-      expect.fail("zero faucet should fail");
-    } catch (err) {
-      expectAnchorCode(err, "ZeroAmount");
-    }
+    expectAnchorCode(await expectRejected(acquire(alice, aliceUsdc, aliceMinusd, 0)), "ZeroAmount");
+    expectAnchorCode(await expectRejected(redeem(alice, aliceMinusd, aliceUsdc, 0)), "ZeroAmount");
+    expectAnchorCode(await expectRejected(faucet(aliceUsdc, 0)), "ZeroAmount");
 
     // Wrong mint: MockUSDC ATA cannot be a MINUSD recipient.
-    try {
-      await acquire(alice, aliceUsdc, aliceUsdc, UNIT);
-      expect.fail("wrong-mint recipient should fail");
-    } catch (err) {
-      expect(String(err)).to.match(/constraint|mint|201/i);
-    }
+    const wrongMint = await expectRejected(acquire(alice, aliceUsdc, aliceUsdc, UNIT));
+    expect(String(wrongMint)).to.match(/constraint|mint|201/i);
   });
 
   it("1e6 is one whole unit, not 1e9", async () => {
@@ -463,7 +458,6 @@ describe("minusd lifecycle", () => {
   });
 
   it("peg holds after a mixed acquire / transfer / redeem sequence", async () => {
-    // Isolate by redeeming alice+bob down if needed is hard; snapshot and apply a known delta.
     const supply0 = await mintSupply(minusdMint);
     const vault0 = await tokenBalance(vault);
     const aliceMin0 = await tokenBalance(aliceMinusd);
@@ -494,34 +488,12 @@ describe("minusd lifecycle", () => {
       vault: await tokenBalance(vault),
     };
 
-    try {
-      await acquire(alice, aliceUsdc, aliceMinusd, snap.aliceUsdc + UNIT);
-      expect.fail("should fail");
-    } catch {
-      /* expected */
-    }
-
-    try {
-      await redeem(alice, aliceMinusd, aliceUsdc, snap.aliceMin + UNIT);
-      expect.fail("should fail");
-    } catch {
-      /* expected */
-    }
-
-    try {
-      await transferMinusd(alice, aliceMinusd, bobMinusd, snap.aliceMin + UNIT);
-      expect.fail("should fail");
-    } catch {
-      /* expected */
-    }
+    await expectRejected(acquire(alice, aliceUsdc, aliceMinusd, snap.aliceUsdc + UNIT));
+    await expectRejected(redeem(alice, aliceMinusd, aliceUsdc, snap.aliceMin + UNIT));
+    await expectRejected(transferMinusd(alice, aliceMinusd, bobMinusd, snap.aliceMin + UNIT));
 
     await freezeOwner(bob.publicKey, bobMinusd);
-    try {
-      await transferMinusd(alice, aliceMinusd, bobMinusd, UNIT);
-      expect.fail("should fail");
-    } catch {
-      /* expected */
-    }
+    await expectRejected(transferMinusd(alice, aliceMinusd, bobMinusd, UNIT));
     await unfreezeOwner(bob.publicKey, bobMinusd);
 
     expect(await tokenBalance(aliceUsdc)).to.equal(snap.aliceUsdc);

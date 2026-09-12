@@ -1,5 +1,11 @@
-# Program identity keypair
+# Program identity keypair (local only)
 
-`minusd-keypair.json` is the **program identity** used so `declare_id!` stays stable across `anchor build` / `anchor test`. It is not a funded wallet and must not be reused as `id.json` or a Devnet fee-payer.
+`keys/minusd-keypair.json` is **gitignored**. Create it with:
 
-Never commit `~/.config/solana/id.json`, `.env`, or any keypair that holds funds.
+```bash
+./scripts/prepare-keys.sh
+```
+
+That script generates a keypair if missing, copies it to `target/deploy/`, and runs `anchor keys sync` so `declare_id!` matches.
+
+Never commit `*-keypair.json`, `~/.config/solana/id.json`, `.env`, or any keypair that holds funds. The previous committed identity (`fLsZq7…NRw`) is retired — its secret was published and must not be used on Devnet or any shared cluster. For Devnet, generate a fresh keypair offline and keep it out of git.

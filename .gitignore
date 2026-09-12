@@ -27,6 +27,9 @@ target/
 solana/.anchor/
 solana/test-ledger/
 solana/target/
+solana/keys/*-keypair.json
+**/*-keypair.json
+!solana/keys/README.md
 
 # Node (future CLI / Lab)
 node_modules/

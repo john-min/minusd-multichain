@@ -10,4 +10,4 @@ yarn test
 # or: ./scripts/test.sh
 ```
 
-`yarn test` copies `keys/minusd-keypair.json` to `target/deploy/` then runs `anchor test`.
+`yarn test` runs `scripts/prepare-keys.sh` (gitignored local program keypair + `anchor keys sync`) then `anchor test`. Never commit `*-keypair.json`.
