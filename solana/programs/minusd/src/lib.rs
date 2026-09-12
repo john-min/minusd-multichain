@@ -42,6 +42,18 @@ pub mod minusd {
         pauser: Pubkey,
         compliance: Pubkey,
     ) -> Result<()> {
+        // Only the BPF upgrade authority may initialize (blocks first-caller takeover).
+        let upgrade_authority = ctx
+            .accounts
+            .program_data
+            .upgrade_authority_address
+            .ok_or_else(|| error!(MinUsdError::Unauthorized))?;
+        require_keys_eq!(
+            upgrade_authority,
+            ctx.accounts.payer.key(),
+            MinUsdError::Unauthorized
+        );
+
         require!(admin != Pubkey::default(), MinUsdError::InvalidRecipient);
         require!(pauser != Pubkey::default(), MinUsdError::InvalidRecipient);
         require!(compliance != Pubkey::default(), MinUsdError::InvalidRecipient);
@@ -380,12 +392,12 @@ pub struct Initialize<'info> {
     pub payer: Signer<'info>,
 
     /// Programdata account for this upgradeable program (`[program_id]` PDA).
+    /// Upgrade-authority equality is checked in `initialize` (Option comparisons in
+    /// account constraints are unreliable across Anchor versions).
     #[account(
         seeds = [crate::ID.as_ref()],
         bump,
-        seeds::program = bpf_loader_upgradeable::ID,
-        constraint = program_data.upgrade_authority_address == Some(payer.key())
-            @ MinUsdError::Unauthorized
+        seeds::program = bpf_loader_upgradeable::ID
     )]
     pub program_data: Account<'info, ProgramData>,
 
