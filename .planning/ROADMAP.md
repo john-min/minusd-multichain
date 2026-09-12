@@ -2,9 +2,9 @@
 
 Coarse five-phase plan. Implementation is sequential: EVM first, Solana later.
 
-**No-leak constraint:** CLI, reconciler, Protocol Lab, simulated rewards, and the trusted bridge **must not leak into Phase 1**.
+**No-leak constraint:** CLI, reconciler, Protocol Lab, simulated rewards, and the trusted bridge **must not leak into Phase 1 or Phase 2**.
 
-## Phase 1 — EVM lifecycle (now)
+## Phase 1 — EVM lifecycle (complete)
 
 **Scope:** EVM lifecycle on **Base Sepolia / local Anvil**.
 
@@ -16,13 +16,17 @@ Coarse five-phase plan. Implementation is sequential: EVM first, Solana later.
 
 **Not in this phase:** Solana, CLI, Lab, rewards, caps, vault contract, bridge.
 
-## Phase 2 — Solana lifecycle
+**Status:** Complete locally (`cd evm && forge test`).
 
-**Scope:** Solana lifecycle on **Devnet** (do not build it in Phase 1).
+## Phase 2 — Solana lifecycle (now)
 
-- Native Anchor (or documented equivalent) program with equivalent product flows.
-- Devnet after local-validator tests pass.
-- Compare account/CPI model with the EVM implementation.
+**Scope:** Solana lifecycle on **local validator**; Devnet after tests pass (optional if no funded key/RPC).
+
+- Native Anchor program with equivalent product flows (acquire, transfer, redeem, pause, freeze).
+- Original SPL Token program (not Token-2022). Program is MINUSD mint freeze authority so frozen ATAs cannot transfer.
+- Local-validator Anchor + TypeScript tests. Compare account/CPI model with the EVM implementation.
+
+**Not in this phase:** TypeScript product CLI, Lab, reconciler, rewards, caps, bridge.
 
 ## Phase 3 — Operator surface
 

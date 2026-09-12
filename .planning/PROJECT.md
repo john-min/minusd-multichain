@@ -2,7 +2,7 @@
 
 **Product:** MinUSD (`MINUSD`)
 **Repo:** `minusd-multichain`
-**Status:** Phase 1 in progress
+**Status:** Phase 1 complete; Phase 2 in progress
 **Networks (eventual):** Base Sepolia and Solana Devnet
 **Source of truth:** [`PRD.md`](../PRD.md)
 
@@ -43,6 +43,23 @@ Recorded here so implementation does not reopen them:
 - Solidity + Foundry under `evm/`
 - OpenZeppelin ERC-20, AccessControl, Pausable, ReentrancyGuard
 - Local Anvil for development; Base Sepolia deploy script (live deploy is optional)
+
+## Phase 2 closed decisions
+
+| Decision | Choice |
+| --- | --- |
+| Language | **Rust + Anchor** |
+| Token program | **Original SPL Token**, not Token-2022 |
+| Decimals | MockUSDC and MINUSD both use **6 decimals** |
+| Pause scope | Pause stops **acquisition and redemption only**. Ordinary transfers still work. |
+| Freeze | Program is MINUSD mint freeze authority; `freeze` CPIs `spl_token::freeze_account` and writes a `FrozenOwner` PDA. Classic SPL transfers never enter the program. |
+| Rewards / caps / CLI / Lab / bridge | **Skip** in Phase 2 |
+
+## Stack (Phase 2)
+
+- Rust + Anchor under `solana/`
+- Original SPL Token program (`anchor-spl` token, not token-2022)
+- Local `solana-test-validator` via `anchor test`; Devnet deploy is optional
 
 ## Safety
 

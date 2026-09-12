@@ -1,27 +1,29 @@
 # State
 
-- **Current phase:** 1 — EVM lifecycle
-- **Status:** Phase 1 complete locally (`forge test` green)
+- **Current phase:** 2 — Solana lifecycle
+- **Status:** Phase 2 in progress. Phase 1 complete (`forge test` green).
 - **Granularity:** Coarse
-- **Blocked on:** Nothing for local `forge test`. Live Base Sepolia deploy is optional and skipped without `PRIVATE_KEY` / RPC.
+- **Blocked on:** Nothing for local Phase 1. Phase 2 acceptance is local `anchor test` / `yarn test` in `solana/`. Live Solana Devnet deploy is optional and skipped without a funded key/RPC.
 - **Last updated:** 2026-09-12
 
 ## Completed
 
 - [x] PRD committed (`PRD.md`)
 - [x] Coarse planning docs (this directory)
+- [x] Phase 1 EVM Foundry MVP (MockUSDC, MINUSD, IssuanceController)
+- [x] Phase 1 Foundry tests green
+- [x] Phase 1 README + `.env.example` + `.gitignore`
 
 ## In progress
 
-- [x] `evm/` Foundry MVP (MockUSDC, MINUSD, IssuanceController)
-- [x] Foundry tests green
-- [x] README + `.env.example` + `.gitignore`
+- [ ] `solana/` Anchor program (equivalent acquire / transfer / redeem / pause / freeze)
+- [ ] Anchor + TypeScript tests against local validator
+- [ ] EVM-versus-Solana note from this implementation
 
-## Deferred (must not start in Phase 1)
+## Deferred (must not start in Phase 2)
 
-- Solana program / Devnet
-- TypeScript CLI, reconciler, Protocol Lab
+- TypeScript product CLI, reconciler, Protocol Lab
 - Simulated rewards / `claimYield`
 - Collateral caps
-- Separate vault contract
 - Trusted burn-and-mint bridge
+- Full Solutions Architecture doc set (threat model, handoff template)
