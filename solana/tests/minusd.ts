@@ -123,7 +123,7 @@ describe("minusd lifecycle", () => {
   }
 
 
-  async function tryInitialize(authority: Keypair): Promise<boolean> {
+  async function tryInitialize(authority: Keypair): Promise<string | null> {
     const signers = authority.publicKey.equals(payer.publicKey)
       ? [payer]
       : [payer, authority];
@@ -137,9 +137,9 @@ describe("minusd lifecycle", () => {
           )
         )
         .rpc();
-      return true;
-    } catch {
-      return false;
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -298,12 +298,18 @@ describe("minusd lifecycle", () => {
     expectAnchorCode(unauthorized, "Unauthorized");
 
     // Discover which known deploy key Anchor recorded as upgrade authority.
-    if (await tryInitialize(payer)) {
+    const walletErr = await tryInitialize(payer);
+    if (walletErr === null) {
       upgradeAuthority = payer;
-    } else if (await tryInitialize(programKp)) {
-      upgradeAuthority = programKp;
     } else {
-      throw new Error("initialize failed for both wallet and program identity keypair");
+      const programErr = await tryInitialize(programKp);
+      if (programErr === null) {
+        upgradeAuthority = programKp;
+      } else {
+        throw new Error(
+          `initialize failed for wallet (${walletErr}) and program keypair (${programErr})`
+        );
+      }
     }
 
     if (!payer.publicKey.equals(upgradeAuthority.publicKey)) {
