@@ -43,14 +43,16 @@ pub mod minusd {
         compliance: Pubkey,
     ) -> Result<()> {
         // Only the BPF upgrade authority may initialize (blocks first-caller takeover).
-        let upgrade_authority = ctx
+        // `payer` may differ so a program-identity authority can authorize while a
+        // system wallet funds `init` accounts.
+        let recorded_authority = ctx
             .accounts
             .program_data
             .upgrade_authority_address
             .ok_or_else(|| error!(MinUsdError::Unauthorized))?;
         require_keys_eq!(
-            upgrade_authority,
-            ctx.accounts.payer.key(),
+            recorded_authority,
+            ctx.accounts.upgrade_authority.key(),
             MinUsdError::Unauthorized
         );
 
@@ -388,6 +390,9 @@ pub struct AccountUnfrozen {
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     /// Must be this program's BPF upgrade authority. Prevents first-caller takeover.
+    pub upgrade_authority: Signer<'info>,
+
+    /// Funds newly created accounts. May be a different wallet than the upgrade authority.
     #[account(mut)]
     pub payer: Signer<'info>,
 

@@ -127,23 +127,17 @@ describe("minusd lifecycle", () => {
     const info = await connection.getAccountInfo(programData);
     expect(info, "program data account missing").to.not.equal(null);
     const data = Buffer.from(info!.data);
-    // Prefer an exact header parse, but fall back to locating a known deploy
-    // key inside ProgramData — Anchor/localnet layouts have varied by toolchain.
     const parsed = readUpgradeAuthority(data);
+    expect(parsed, "program has no upgrade authority").to.not.equal(null);
+    expect(parsed!.equals(PublicKey.default), "upgrade authority unexpectedly default").to.equal(false);
     const candidates = [payer, programKp];
-    if (parsed && !parsed.equals(PublicKey.default)) {
-      for (const kp of candidates) {
-        if (parsed.equals(kp.publicKey)) return kp;
-      }
-      throw new Error(`parsed upgrade authority ${parsed.toBase58()} is not wallet or program keypair`);
-    }
     for (const kp of candidates) {
-      if (data.includes(Buffer.from(kp.publicKey.toBytes()))) return kp;
+      if (parsed!.equals(kp.publicKey)) return kp;
     }
-    throw new Error(
-      `could not resolve upgrade authority from programdata (len=${data.length}, variant=${data.length >= 4 ? data.readUInt32LE(0) : -1})`
-    );
+    // Last resort: try Anchor-reported authority against known deploy keys only by equality
+    throw new Error(`upgrade authority ${parsed!.toBase58()} is not wallet or program keypair`);
   }
+
 
   async function faucet(ata: PublicKey, amount: number): Promise<void> {
     await program.methods
@@ -158,9 +152,10 @@ describe("minusd lifecycle", () => {
       .rpc();
   }
 
-  function initializeAccounts(initPayer: PublicKey) {
+  function initializeAccounts(authority: PublicKey, rentPayer: PublicKey = admin) {
     return {
-      payer: initPayer,
+      upgradeAuthority: authority,
+      payer: rentPayer,
       programData,
       config: configPda,
       vaultAuthority,
@@ -296,28 +291,32 @@ describe("minusd lifecycle", () => {
     const unauthorized = await expectRejected(
       program.methods
         .initialize(stranger.publicKey, stranger.publicKey, stranger.publicKey)
-        .accounts(initializeAccounts(stranger.publicKey))
+        .accounts(initializeAccounts(stranger.publicKey, stranger.publicKey))
         .signers([stranger])
         .rpc()
     );
     expectAnchorCode(unauthorized, "Unauthorized");
 
-    // A funded wallet that is not the upgrade authority also cannot initialize.
+    // Rent payer alone is not enough when it is not the upgrade authority.
     if (!payer.publicKey.equals(upgradeAuthority.publicKey)) {
       const nonAuthority = await expectRejected(
         program.methods
           .initialize(admin, pauser.publicKey, compliance.publicKey)
-          .accounts(initializeAccounts(payer.publicKey))
+          .accounts(initializeAccounts(payer.publicKey, payer.publicKey))
           .signers([payer])
           .rpc()
       );
       expectAnchorCode(nonAuthority, "Unauthorized");
     }
 
+    const initSigners = [payer];
+    if (!upgradeAuthority.publicKey.equals(payer.publicKey)) {
+      initSigners.push(upgradeAuthority);
+    }
     await program.methods
       .initialize(admin, pauser.publicKey, compliance.publicKey)
-      .accounts(initializeAccounts(upgradeAuthority.publicKey))
-      .signers(upgradeAuthority.publicKey.equals(payer.publicKey) ? [] : [upgradeAuthority])
+      .accounts(initializeAccounts(upgradeAuthority.publicKey, payer.publicKey))
+      .signers(initSigners.filter((k, i, arr) => arr.findIndex((x) => x.publicKey.equals(k.publicKey)) === i))
       .rpc();
 
     aliceUsdc = (
