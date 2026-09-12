@@ -1,0 +1,32 @@
+# Secrets — never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+keystore/
+**/keystore/
+**/UTC--*
+
+# Foundry build + broadcast artifacts
+out/
+cache/
+broadcast/
+evm/out/
+evm/cache/
+evm/broadcast/
+
+# Local validator / future Solana artifacts
+test-ledger/
+.anchor/
+target/
+**/*.so
+
+# Node (future CLI / Lab)
+node_modules/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
