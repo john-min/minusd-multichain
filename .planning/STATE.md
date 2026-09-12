@@ -1,7 +1,7 @@
 # State
 
 - **Current phase:** 1 — EVM lifecycle
-- **Status:** Planning complete; implementation in progress
+- **Status:** Implementation complete; waiting on `forge test`
 - **Granularity:** Coarse
 - **Blocked on:** Nothing for local `forge test`. Live Base Sepolia deploy is optional and skipped without `PRIVATE_KEY` / RPC.
 - **Last updated:** 2026-09-12
