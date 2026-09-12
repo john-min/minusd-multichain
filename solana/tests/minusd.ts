@@ -126,11 +126,23 @@ describe("minusd lifecycle", () => {
   async function resolveUpgradeAuthority(): Promise<Keypair> {
     const info = await connection.getAccountInfo(programData);
     expect(info, "program data account missing").to.not.equal(null);
-    const authorityPk = readUpgradeAuthority(Buffer.from(info!.data));
-    expect(authorityPk, "program has no upgrade authority").to.not.equal(null);
-    if (authorityPk!.equals(payer.publicKey)) return payer;
-    if (authorityPk!.equals(programKp.publicKey)) return programKp;
-    throw new Error(`upgrade authority ${authorityPk!.toBase58()} is not wallet or program keypair`);
+    const data = Buffer.from(info!.data);
+    // Prefer an exact header parse, but fall back to locating a known deploy
+    // key inside ProgramData — Anchor/localnet layouts have varied by toolchain.
+    const parsed = readUpgradeAuthority(data);
+    const candidates = [payer, programKp];
+    if (parsed && !parsed.equals(PublicKey.default)) {
+      for (const kp of candidates) {
+        if (parsed.equals(kp.publicKey)) return kp;
+      }
+      throw new Error(`parsed upgrade authority ${parsed.toBase58()} is not wallet or program keypair`);
+    }
+    for (const kp of candidates) {
+      if (data.includes(Buffer.from(kp.publicKey.toBytes()))) return kp;
+    }
+    throw new Error(
+      `could not resolve upgrade authority from programdata (len=${data.length}, variant=${data.length >= 4 ? data.readUInt32LE(0) : -1})`
+    );
   }
 
   async function faucet(ata: PublicKey, amount: number): Promise<void> {
