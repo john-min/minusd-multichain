@@ -21,7 +21,8 @@ wallet = "~/.config/solana/id.json"
 # Load workspace programs with --upgradeable-program so ProgramData records the
 # wallet as upgrade authority. Default --bpf-program uses Pubkey::default(), which
 # makes upgrade-authority-gated initialize impossible under `anchor test`.
-[test.validator]
+# Must be under [test], not [test.validator] (see Anchor.toml docs).
+[test]
 upgradeable = true
 
 [scripts]

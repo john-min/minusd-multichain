@@ -48,7 +48,7 @@ pub mod minusd {
         //
         // Localnet note: `solana-test-validator --bpf-program` records
         // `Pubkey::default()` as authority (not a usable signer). Anchor.toml sets
-        // `[test.validator] upgradeable = true` so local tests use the wallet.
+        // `[test] upgradeable = true` so local tests use the wallet.
         let recorded_authority = ctx
             .accounts
             .program_data
