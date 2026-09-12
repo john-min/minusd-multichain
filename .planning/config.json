@@ -1,0 +1,14 @@
+{
+  "granularity": "coarse",
+  "parallelResearch": true,
+  "implementation": "sequential",
+  "implementationOrder": ["evm", "solana"],
+  "planningDocsInGit": true,
+  "research": true,
+  "planCheck": true,
+  "verify": true,
+  "modelProfile": "balanced",
+  "source": "PRD.md",
+  "autoFromPrd": true,
+  "notes": "GSD was not available in the cloud environment; these files were written by hand to match Coarse GSD output and then trimmed so Phase 1 is only the EVM lifecycle."
+}
