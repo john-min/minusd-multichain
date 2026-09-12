@@ -8,3 +8,4 @@ error AccountIsFrozen(address account);
 error AlreadyFrozen(address account);
 error NotFrozen(address account);
 error DecimalMismatch(uint8 expected, uint8 actual);
+error CollateralAmountMismatch(uint256 expected, uint256 actual);

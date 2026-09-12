@@ -10,12 +10,20 @@ on:
       - "evm/**"
       - ".github/workflows/evm.yml"
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.1
+      - name: Check formatting
+        working-directory: evm
+        run: forge fmt --check
       - name: Run Foundry tests
         working-directory: evm
         run: forge test -vvv

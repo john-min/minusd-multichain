@@ -47,13 +47,15 @@ contract LifecycleHandler is StdUtils {
         if (maxAmount == 0) return;
         amount = bound(amount, 1, maxAmount);
 
+        // Valid calls must succeed. Unexpected reverts fail the invariant campaign
+        // because foundry.toml sets fail_on_revert = true.
         vm.startPrank(user);
         usdc.approve(address(controller), amount);
-        try controller.acquire(user, amount) {
-            ghostSupply += amount;
-            ghostCollateral += amount;
-        } catch {}
+        controller.acquire(user, amount);
         vm.stopPrank();
+
+        ghostSupply += amount;
+        ghostCollateral += amount;
     }
 
     function redeem(uint256 userSeed, uint256 amount) external {
@@ -63,11 +65,11 @@ contract LifecycleHandler is StdUtils {
         amount = bound(amount, 1, maxAmount);
 
         vm.startPrank(user);
-        try controller.redeem(user, amount) {
-            ghostSupply -= amount;
-            ghostCollateral -= amount;
-        } catch {}
+        controller.redeem(user, amount);
         vm.stopPrank();
+
+        ghostSupply -= amount;
+        ghostCollateral -= amount;
     }
 
     function transferTo(uint256 fromSeed, uint256 toSeed, uint256 amount) external {
@@ -78,7 +80,7 @@ contract LifecycleHandler is StdUtils {
         amount = bound(amount, 1, maxAmount);
 
         vm.prank(from);
-        try minusd.transfer(to, amount) {} catch {}
+        minusd.transfer(to, amount);
     }
 }
 

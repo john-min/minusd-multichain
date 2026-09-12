@@ -7,13 +7,56 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
-import {AccountIsFrozen, DecimalMismatch, InvalidRecipient, NotController, ZeroAmount} from "../src/Errors.sol";
+import {
+    AccountIsFrozen,
+    CollateralAmountMismatch,
+    DecimalMismatch,
+    InvalidRecipient,
+    NotController,
+    ZeroAmount
+} from "../src/Errors.sol";
 import {IssuanceController} from "../src/IssuanceController.sol";
 import {MinUSD} from "../src/MinUSD.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
 
 contract EighteenDecimalToken is ERC20 {
     constructor() ERC20("Eighteen", "E18") {}
+}
+
+/// @dev Six-decimal ERC-20 that silently keeps 1% of each transfer.
+contract FeeOnTransferSixDecimal is ERC20 {
+    uint256 internal constant FEE_BPS = 100; // 1%
+
+    constructor() ERC20("Fee USDC", "fUSDC") {}
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        uint256 fee = (amount * FEE_BPS) / 10_000;
+        uint256 sendAmount = amount - fee;
+        _transfer(msg.sender, to, sendAmount);
+        if (fee > 0) {
+            _transfer(msg.sender, address(this), fee);
+        }
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
+        _spendAllowance(from, msg.sender, amount);
+        uint256 fee = (amount * FEE_BPS) / 10_000;
+        uint256 sendAmount = amount - fee;
+        _transfer(from, to, sendAmount);
+        if (fee > 0) {
+            _transfer(from, address(this), fee);
+        }
+        return true;
+    }
 }
 
 contract IssuanceTest is Test {
@@ -218,7 +261,9 @@ contract IssuanceTest is Test {
         vm.startPrank(alice);
         usdc.approve(address(controller), 5 * UNIT);
         vm.expectRevert(
-            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(controller), 5 * UNIT, 6 * UNIT)
+            abi.encodeWithSelector(
+                IERC20Errors.ERC20InsufficientAllowance.selector, address(controller), 5 * UNIT, 6 * UNIT
+            )
         );
         controller.acquire(alice, 6 * UNIT);
         vm.stopPrank();
@@ -263,6 +308,23 @@ contract IssuanceTest is Test {
         EighteenDecimalToken e18 = new EighteenDecimalToken();
         vm.expectRevert(abi.encodeWithSelector(DecimalMismatch.selector, uint8(6), uint8(18)));
         new IssuanceController(address(e18), admin);
+    }
+
+    function test_AcquireRejectsFeeOnTransferCollateral() public {
+        FeeOnTransferSixDecimal feeToken = new FeeOnTransferSixDecimal();
+        IssuanceController feeController = new IssuanceController(address(feeToken), admin);
+        uint256 amount = 100 * UNIT;
+        feeToken.mint(alice, amount);
+
+        vm.startPrank(alice);
+        feeToken.approve(address(feeController), amount);
+        uint256 expectedReceived = amount - (amount / 100);
+        vm.expectRevert(abi.encodeWithSelector(CollateralAmountMismatch.selector, amount, expectedReceived));
+        feeController.acquire(alice, amount);
+        vm.stopPrank();
+
+        assertEq(feeController.minusd().totalSupply(), 0);
+        assertEq(feeToken.balanceOf(address(feeController)), 0);
     }
 
     function test_InvariantHoldsAfterMixedSequence() public {

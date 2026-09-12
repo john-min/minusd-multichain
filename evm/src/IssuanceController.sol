@@ -8,7 +8,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-import {AccountIsFrozen, DecimalMismatch, InvalidRecipient, ZeroAmount} from "./Errors.sol";
+import {AccountIsFrozen, CollateralAmountMismatch, DecimalMismatch, InvalidRecipient, ZeroAmount} from "./Errors.sol";
 import {MinUSD} from "./MinUSD.sol";
 
 /// @title IssuanceController
@@ -50,8 +50,14 @@ contract IssuanceController is AccessControl, Pausable, ReentrancyGuard {
         _requireNotFrozen(msg.sender);
         _requireNotFrozen(recipient);
 
-        // Pull collateral first so a failed transfer cannot mint.
+        // Pull collateral first so a failed transfer cannot mint. Require the
+        // observed balance delta equals `amount` so fee-on-transfer tokens cannot
+        // mint undercollateralized MINUSD.
+        uint256 beforeBalance = collateral.balanceOf(address(this));
         collateral.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = collateral.balanceOf(address(this)) - beforeBalance;
+        if (received != amount) revert CollateralAmountMismatch(amount, received);
+
         minusd.mint(recipient, amount);
         emit Acquired(msg.sender, recipient, amount);
     }
@@ -63,9 +69,14 @@ contract IssuanceController is AccessControl, Pausable, ReentrancyGuard {
         _requireNotFrozen(msg.sender);
         _requireNotFrozen(recipient);
 
-        // Burn before releasing collateral (checks-effects-interactions).
+        // Burn before releasing collateral (checks-effects-interactions). Require
+        // the recipient's observed balance increase equals `amount`.
         minusd.burn(msg.sender, amount);
+        uint256 beforeBalance = collateral.balanceOf(recipient);
         collateral.safeTransfer(recipient, amount);
+        uint256 delivered = collateral.balanceOf(recipient) - beforeBalance;
+        if (delivered != amount) revert CollateralAmountMismatch(amount, delivered);
+
         emit Redeemed(msg.sender, recipient, amount);
     }
 

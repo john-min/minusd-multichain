@@ -3,14 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {
-    AccountIsFrozen,
-    AlreadyFrozen,
-    InvalidRecipient,
-    NotController,
-    NotFrozen,
-    ZeroAmount
-} from "./Errors.sol";
+import {AccountIsFrozen, AlreadyFrozen, InvalidRecipient, NotController, NotFrozen, ZeroAmount} from "./Errors.sol";
 
 /// @title MinUSD
 /// @notice 6-decimal branded dollar. Mint/burn/freeze only via the issuance controller.
