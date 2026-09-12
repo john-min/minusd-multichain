@@ -11,7 +11,7 @@ solana/
   Anchor.toml
   Cargo.toml
   package.json
-  programs/minusd/src/   # Anchor program (split modules)
+  programs/minusd/src/   # lib.rs + state.rs + errors.rs
   tests/minusd.ts        # Anchor + TypeScript test client (not the Phase 3 CLI)
   keys/minusd-keypair.json
   scripts/test.sh
@@ -77,6 +77,7 @@ Do not use Token-2022 transfer hooks. See `docs/adr/0001-spl-token-not-token-202
 - Mints and vault are PDAs created in `initialize` (deterministic; no client-created mint keys).
 - Transfers are raw SPL Token transfers, not a program `transfer_minusd`. Freeze uses mint freeze authority so that path is actually blocked.
 - A `FrozenOwner` PDA is kept **in addition** to SPL freeze so acquire/redeem match EVM’s owner-level mapping even when an ATA is missing or substituted.
+- Instruction handlers and `#[derive(Accounts)]` structs live in `lib.rs` (not split instruction modules). Anchor 0.31’s `#[program]` client-account imports resolve to `crate::<ix_name>`; a split module layout fought that. `state.rs` / `errors.rs` remain separate.
 
 ## Tests (`anchor test` / `yarn test` must pass)
 

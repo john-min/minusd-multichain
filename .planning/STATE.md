@@ -1,9 +1,9 @@
 # State
 
 - **Current phase:** 2 — Solana lifecycle
-- **Status:** Phase 2 in progress. Phase 1 complete (`forge test` green).
+- **Status:** Phase 2 complete locally (`cd solana && yarn test` — 10 passing). Phase 1 complete (`forge test` green).
 - **Granularity:** Coarse
-- **Blocked on:** Nothing for local Phase 1. Phase 2 acceptance is local `anchor test` / `yarn test` in `solana/`. Live Solana Devnet deploy is optional and skipped without a funded key/RPC.
+- **Blocked on:** Nothing for local acceptance. Live Solana Devnet deploy is optional and skipped without a funded key/RPC.
 - **Last updated:** 2026-09-12
 
 ## Completed
@@ -16,9 +16,9 @@
 
 ## In progress
 
-- [ ] `solana/` Anchor program (equivalent acquire / transfer / redeem / pause / freeze)
-- [ ] Anchor + TypeScript tests against local validator
-- [ ] EVM-versus-Solana note from this implementation
+- [x] `solana/` Anchor program (equivalent acquire / transfer / redeem / pause / freeze)
+- [x] Anchor + TypeScript tests against local validator
+- [x] EVM-versus-Solana note from this implementation
 
 ## Deferred (must not start in Phase 2)
 

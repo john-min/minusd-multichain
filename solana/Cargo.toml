@@ -2,6 +2,12 @@
 members = ["programs/*"]
 resolver = "2"
 
+# Cargo.lock is pinned so cargo-build-sbf 2.1.0 / platform-tools v1.43
+# (cargo 1.79) can parse every manifest. Do not bump these without
+# re-checking `cargo +1.79 fetch`:
+#   proc-macro-crate 3.2.0, zeroize 1.8.1, zeroize_derive 1.4.2,
+#   blake3 1.5.5, indexmap 2.7.1.
+
 [profile.release]
 overflow-checks = true
 lto = "fat"
