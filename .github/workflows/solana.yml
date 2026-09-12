@@ -1,0 +1,69 @@
+name: solana
+
+on:
+  push:
+    paths:
+      - "solana/**"
+      - ".github/workflows/solana.yml"
+  pull_request:
+    paths:
+      - "solana/**"
+      - ".github/workflows/solana.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+          cache-dependency-path: solana/yarn.lock
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+
+      - name: Cache Solana / Cargo / program build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/solana
+            ~/.local/share/solana
+            solana/target
+          key: solana-0.31.1-2.1.0-${{ hashFiles('solana/Cargo.lock', 'solana/programs/minusd/Cargo.toml') }}
+
+      - name: Install Solana CLI 2.1.0
+        run: |
+          if ! command -v solana >/dev/null 2>&1; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/v2.1.0/install)"
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor CLI 0.31.1
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          if [ ! -x "$HOME/.local/bin/anchor" ]; then
+            curl -sSfL https://github.com/solana-foundation/anchor/releases/download/v0.31.1/anchor-0.31.1-x86_64-unknown-linux-gnu \
+              -o "$HOME/.local/bin/anchor"
+            chmod +x "$HOME/.local/bin/anchor"
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Local fee-payer (ephemeral CI key)
+        run: |
+          mkdir -p "$HOME/.config/solana"
+          solana-keygen new --no-bip39-passphrase -o "$HOME/.config/solana/id.json" --force --silent
+          solana config set --url localhost
+
+      - name: Install JS deps
+        working-directory: solana
+        run: yarn install --frozen-lockfile
+
+      - name: Anchor test
+        working-directory: solana
+        run: yarn test
