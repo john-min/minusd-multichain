@@ -32,6 +32,32 @@ pub const MOCK_USDC_MINT_SEED: &[u8] = b"mock_usdc_mint";
 pub const MINUSD_MINT_SEED: &[u8] = b"minusd_mint";
 pub const FROZEN_SEED: &[u8] = b"frozen";
 
+/// Ensure `payer` is the BPF upgrade authority recorded in `program_data`.
+///
+/// Parses `UpgradeableLoaderState::ProgramData` bincode layout without pulling
+/// an extra crate: `u32` discriminant (3) + `u64` slot + `Option<Pubkey>`.
+fn require_upgrade_authority(program_data: &AccountInfo, payer: Pubkey) -> Result<()> {
+    let data = program_data.try_borrow_data()?;
+    if data.len() < 13 {
+        return err!(MinUsdError::Unauthorized);
+    }
+    let variant = u32::from_le_bytes(data[0..4].try_into().unwrap());
+    if variant != 3 {
+        // Not ProgramData
+        return err!(MinUsdError::Unauthorized);
+    }
+    let option = data[12];
+    if option == 0 {
+        return err!(MinUsdError::Unauthorized);
+    }
+    if data.len() < 45 {
+        return err!(MinUsdError::Unauthorized);
+    }
+    let authority = Pubkey::new_from_array(data[13..45].try_into().unwrap());
+    require_keys_eq!(authority, payer, MinUsdError::Unauthorized);
+    Ok(())
+}
+
 #[program]
 pub mod minusd {
     use super::*;
@@ -43,16 +69,10 @@ pub mod minusd {
         compliance: Pubkey,
     ) -> Result<()> {
         // Only the BPF upgrade authority may initialize (blocks first-caller takeover).
-        let upgrade_authority = ctx
-            .accounts
-            .program_data
-            .upgrade_authority_address
-            .ok_or_else(|| error!(MinUsdError::Unauthorized))?;
-        require_keys_eq!(
-            upgrade_authority,
+        require_upgrade_authority(
+            &ctx.accounts.program_data.to_account_info(),
             ctx.accounts.payer.key(),
-            MinUsdError::Unauthorized
-        );
+        )?;
 
         require!(admin != Pubkey::default(), MinUsdError::InvalidRecipient);
         require!(pauser != Pubkey::default(), MinUsdError::InvalidRecipient);
@@ -391,15 +411,15 @@ pub struct Initialize<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// Programdata account for this upgradeable program (`[program_id]` PDA).
-    /// Upgrade-authority equality is checked in `initialize` (Option comparisons in
-    /// account constraints are unreliable across Anchor versions).
+    /// CHECK: PDA for this program under the BPF upgradeable loader. Contents are
+    /// parsed as `UpgradeableLoaderState::ProgramData` in `require_upgrade_authority`.
     #[account(
         seeds = [crate::ID.as_ref()],
         bump,
-        seeds::program = bpf_loader_upgradeable::ID
+        seeds::program = bpf_loader_upgradeable::ID,
+        owner = bpf_loader_upgradeable::ID
     )]
-    pub program_data: Account<'info, ProgramData>,
+    pub program_data: UncheckedAccount<'info>,
 
     #[account(
         init,

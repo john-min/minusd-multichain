@@ -9,6 +9,8 @@ import {
 } from "@solana/spl-token";
 import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { expect } from "chai";
+import * as fs from "fs";
+import * as path from "path";
 import { Minusd } from "../target/types/minusd";
 
 const UNIT = 1_000_000;
@@ -16,6 +18,24 @@ const TOKEN_PROGRAM = TOKEN_PROGRAM_ID;
 const BPF_LOADER_UPGRADEABLE = new PublicKey(
   "BPFLoaderUpgradeab1e11111111111111111111111"
 );
+
+
+/** Parse BPF UpgradeableLoaderState::ProgramData upgrade authority (bincode). */
+function readUpgradeAuthority(data: Buffer): PublicKey | null {
+  if (data.length < 13) return null;
+  const variant = data.readUInt32LE(0);
+  if (variant !== 3) return null; // ProgramData
+  const option = data.readUInt8(12);
+  if (option === 0) return null;
+  if (data.length < 45) return null;
+  return new PublicKey(data.subarray(13, 45));
+}
+
+function loadProgramKeypair(): Keypair {
+  const keyPath = path.join(__dirname, "../keys/minusd-keypair.json");
+  const raw = JSON.parse(fs.readFileSync(keyPath, "utf8")) as number[];
+  return Keypair.fromSecretKey(Uint8Array.from(raw));
+}
 
 async function expectRejected(promise: Promise<unknown>): Promise<unknown> {
   let rejected: unknown = null;
@@ -42,6 +62,7 @@ describe("minusd lifecycle", () => {
   const alice = Keypair.generate();
   const bob = Keypair.generate();
   const stranger = Keypair.generate();
+  const programKp = loadProgramKeypair();
 
   const [configPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("config")],
@@ -72,6 +93,7 @@ describe("minusd lifecycle", () => {
   let aliceMinusd: PublicKey;
   let bobUsdc: PublicKey;
   let bobMinusd: PublicKey;
+  let upgradeAuthority: Keypair;
 
   function frozenPda(owner: PublicKey): PublicKey {
     return PublicKey.findProgramAddressSync(
@@ -98,6 +120,17 @@ describe("minusd lifecycle", () => {
     const vaultBal = await tokenBalance(vault);
     const supply = await mintSupply(minusdMint);
     expect(vaultBal, "vault MockUSDC != MINUSD supply").to.equal(supply);
+  }
+
+
+  async function resolveUpgradeAuthority(): Promise<Keypair> {
+    const info = await connection.getAccountInfo(programData);
+    expect(info, "program data account missing").to.not.equal(null);
+    const authorityPk = readUpgradeAuthority(Buffer.from(info!.data));
+    expect(authorityPk, "program has no upgrade authority").to.not.equal(null);
+    if (authorityPk!.equals(payer.publicKey)) return payer;
+    if (authorityPk!.equals(programKp.publicKey)) return programKp;
+    throw new Error(`upgrade authority ${authorityPk!.toBase58()} is not wallet or program keypair`);
   }
 
   async function faucet(ata: PublicKey, amount: number): Promise<void> {
@@ -242,6 +275,11 @@ describe("minusd lifecycle", () => {
       airdrop(stranger.publicKey),
     ]);
 
+    upgradeAuthority = await resolveUpgradeAuthority();
+    if (!upgradeAuthority.publicKey.equals(payer.publicKey)) {
+      await airdrop(upgradeAuthority.publicKey);
+    }
+
     // First-caller takeover must fail: only the upgrade authority may initialize.
     const unauthorized = await expectRejected(
       program.methods
@@ -252,9 +290,22 @@ describe("minusd lifecycle", () => {
     );
     expectAnchorCode(unauthorized, "Unauthorized");
 
+    // A funded wallet that is not the upgrade authority also cannot initialize.
+    if (!payer.publicKey.equals(upgradeAuthority.publicKey)) {
+      const nonAuthority = await expectRejected(
+        program.methods
+          .initialize(admin, pauser.publicKey, compliance.publicKey)
+          .accounts(initializeAccounts(payer.publicKey))
+          .signers([payer])
+          .rpc()
+      );
+      expectAnchorCode(nonAuthority, "Unauthorized");
+    }
+
     await program.methods
       .initialize(admin, pauser.publicKey, compliance.publicKey)
-      .accounts(initializeAccounts(admin))
+      .accounts(initializeAccounts(upgradeAuthority.publicKey))
+      .signers(upgradeAuthority.publicKey.equals(payer.publicKey) ? [] : [upgradeAuthority])
       .rpc();
 
     aliceUsdc = (
