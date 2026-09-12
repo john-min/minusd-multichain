@@ -50,6 +50,11 @@ contract IssuanceTest is Test {
         vm.stopPrank();
     }
 
+    function _approve(address user, uint256 amount) internal {
+        vm.prank(user);
+        usdc.approve(address(controller), amount);
+    }
+
     function _assertPeg() internal view {
         assertEq(usdc.balanceOf(address(controller)), minusd.totalSupply(), "controller USDC != MINUSD supply");
     }
@@ -57,9 +62,11 @@ contract IssuanceTest is Test {
     function test_AcquireTransferRedeem() public {
         uint256 acquireAmount = 100 * UNIT;
 
+        _approve(alice, acquireAmount);
         vm.expectEmit(true, true, false, true, address(controller));
         emit IssuanceController.Acquired(alice, alice, acquireAmount);
-        _acquire(alice, alice, acquireAmount);
+        vm.prank(alice);
+        controller.acquire(alice, acquireAmount);
 
         assertEq(minusd.balanceOf(alice), acquireAmount);
         assertEq(usdc.balanceOf(alice), 900 * UNIT);
@@ -73,10 +80,11 @@ contract IssuanceTest is Test {
         assertEq(minusd.totalSupply(), acquireAmount);
         assertEq(usdc.balanceOf(address(controller)), acquireAmount);
 
+        uint256 redeemAmount = 25 * UNIT;
         vm.expectEmit(true, true, false, true, address(controller));
-        emit IssuanceController.Redeemed(alice, alice, 25 * UNIT);
+        emit IssuanceController.Redeemed(alice, alice, redeemAmount);
         vm.prank(alice);
-        controller.redeem(alice, 25 * UNIT);
+        controller.redeem(alice, redeemAmount);
 
         assertEq(minusd.balanceOf(alice), 35 * UNIT);
         assertEq(usdc.balanceOf(alice), 925 * UNIT);
@@ -85,29 +93,25 @@ contract IssuanceTest is Test {
     }
 
     function test_UnauthorizedAdminPauseFreeze() public {
-        vm.prank(stranger);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                stranger,
-                controller.DEFAULT_ADMIN_ROLE()
-            )
-        );
-        controller.grantRole(controller.PAUSER_ROLE(), stranger);
+        bytes32 adminRole = controller.DEFAULT_ADMIN_ROLE();
+        bytes32 pauserRole = controller.PAUSER_ROLE();
+        bytes32 complianceRole = controller.COMPLIANCE_ROLE();
 
         vm.prank(stranger);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, controller.PAUSER_ROLE()
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, adminRole)
+        );
+        controller.grantRole(pauserRole, stranger);
+
+        vm.prank(stranger);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, pauserRole)
         );
         controller.pause();
 
         vm.prank(stranger);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, controller.COMPLIANCE_ROLE()
-            )
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, complianceRole)
         );
         controller.freeze(alice);
 
@@ -290,9 +294,9 @@ contract IssuanceTest is Test {
         uint256 vault = usdc.balanceOf(address(controller));
 
         vm.startPrank(alice);
-        usdc.approve(address(controller), 50 * UNIT);
+        usdc.approve(address(controller), 2_000 * UNIT);
         vm.expectRevert();
-        controller.acquire(alice, 50 * UNIT);
+        controller.acquire(alice, 2_000 * UNIT);
 
         vm.expectRevert();
         controller.redeem(alice, 21 * UNIT);
