@@ -18,5 +18,11 @@ url = "https://api.apr.dev"
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
+# Load workspace programs with --upgradeable-program so ProgramData records the
+# wallet as upgrade authority. Default --bpf-program uses Pubkey::default(), which
+# makes upgrade-authority-gated initialize impossible under `anchor test`.
+[test.validator]
+upgradeable = true
+
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

@@ -11,3 +11,5 @@ yarn test
 ```
 
 `yarn test` runs `scripts/prepare-keys.sh` (gitignored local program keypair + `anchor keys sync`) then `anchor test`. Never commit `*-keypair.json`.
+
+`initialize` requires the BPF upgrade authority. Localnet tests set `[test.validator] upgradeable = true` in `Anchor.toml` so the provider wallet is that authority (plain `--bpf-program` would record `Pubkey::default()` and block init).

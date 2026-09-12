@@ -45,11 +45,19 @@ pub mod minusd {
         // Only the BPF upgrade authority may initialize (blocks first-caller takeover).
         // `payer` may differ so a program-identity authority can authorize while a
         // system wallet funds `init` accounts.
+        //
+        // Localnet note: `solana-test-validator --bpf-program` records
+        // `Pubkey::default()` as authority (not a usable signer). Anchor.toml sets
+        // `[test.validator] upgradeable = true` so local tests use the wallet.
         let recorded_authority = ctx
             .accounts
             .program_data
             .upgrade_authority_address
             .ok_or_else(|| error!(MinUsdError::Unauthorized))?;
+        require!(
+            recorded_authority != Pubkey::default(),
+            MinUsdError::Unauthorized
+        );
         require_keys_eq!(
             recorded_authority,
             ctx.accounts.upgrade_authority.key(),

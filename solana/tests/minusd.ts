@@ -297,7 +297,9 @@ describe("minusd lifecycle", () => {
     );
     expectAnchorCode(unauthorized, "Unauthorized");
 
-    // Discover which known deploy key Anchor recorded as upgrade authority.
+    // With `[test.validator] upgradeable = true`, Anchor loads the program with
+    // the wallet as BPF upgrade authority. Fall back to the program keypair for
+    // non-Anchor deploys that set that key as authority.
     const walletErr = await tryInitialize(payer);
     if (walletErr === null) {
       upgradeAuthority = payer;
@@ -306,8 +308,15 @@ describe("minusd lifecycle", () => {
       if (programErr === null) {
         upgradeAuthority = programKp;
       } else {
+        const programDataInfo = await connection.getAccountInfo(programData);
+        const onChainAuthority = programDataInfo
+          ? readUpgradeAuthority(Buffer.from(programDataInfo.data))
+          : null;
         throw new Error(
-          `initialize failed for wallet (${walletErr}) and program keypair (${programErr})`
+          `initialize failed for wallet (${walletErr}) and program keypair (${programErr}); ` +
+            `on-chain upgrade authority=${onChainAuthority?.toBase58() ?? "none"}; ` +
+            `wallet=${payer.publicKey.toBase58()}; program=${programKp.publicKey.toBase58()}. ` +
+            `Ensure Anchor.toml has [test.validator] upgradeable = true for localnet.`
         );
       }
     }
