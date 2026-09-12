@@ -1,0 +1,21 @@
+name: evm
+
+on:
+  push:
+    paths:
+      - "evm/**"
+      - ".github/workflows/evm.yml"
+  pull_request:
+    paths:
+      - "evm/**"
+      - ".github/workflows/evm.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Run Foundry tests
+        working-directory: evm
+        run: forge test -vvv
