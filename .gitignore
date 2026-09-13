@@ -17,11 +17,19 @@ evm/out/
 evm/cache/
 evm/broadcast/
 
-# Local validator / future Solana artifacts
+# Local validator / Solana artifacts
 test-ledger/
 .anchor/
 target/
 **/*.so
+**/id.json
+**/.sbf/
+solana/.anchor/
+solana/test-ledger/
+solana/target/
+solana/keys/*-keypair.json
+**/*-keypair.json
+!solana/keys/README.md
 
 # Node (future CLI / Lab)
 node_modules/

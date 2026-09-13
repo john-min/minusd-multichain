@@ -1,8 +1,8 @@
 # Requirements
 
-Trimmed for **Phase 1 only**. Later-phase requirements live in `PRD.md` and must not be implemented now.
+Phase 1 (EVM) is complete. This file now covers **Phase 1 (closed) + Phase 2 (Solana lifecycle)**. Later-phase requirements still live in `PRD.md` and must not be implemented now.
 
-Phase 1 is the **EVM token lifecycle** on local Anvil and (optionally) Base Sepolia. CLI, reconciler, Protocol Lab, simulated rewards, collateral caps, a separate vault contract, Solana, and the trusted bridge **must not leak into Phase 1**.
+Phase 1 no-leak rules stay in force for the EVM tree: CLI, reconciler, Protocol Lab, simulated rewards, collateral caps, a separate vault contract, and the trusted bridge **must not leak into Phase 1**. Solana is Phase 2 only.
 
 ## Safety (always on)
 
@@ -58,3 +58,56 @@ Phase 1 is the **EVM token lifecycle** on local Anvil and (optionally) Base Sepo
 - Collateral caps
 - Separate vault contract
 - Solutions Architecture doc set (threat model, handoff template, full ADRs)
+
+---
+
+## Phase 2 — Solana lifecycle
+
+Phase 2 is the **Solana token lifecycle** on a local validator and (optionally) Devnet. It must match Phase 1 product semantics. The TypeScript product CLI, reconciler, Protocol Lab, simulated rewards, collateral caps, and trusted bridge **must not leak into Phase 2**. A TypeScript **test client** under `solana/tests/` is required and is not the Phase 3 CLI.
+
+### Assets
+
+- **MockUSDC mint:** Freely mintable test faucet. 6 decimals. No monetary value.
+- **MINUSD mint:** 6 decimals. Mint/burn authority is the program (PDA), not users.
+
+### Issuance
+
+- Program-controlled vault token account holds MockUSDC.
+- **Acquire:** User sends MockUSDC into the vault (SPL transfer CPI; user is token-account owner). Program mints the same nominal MINUSD to the recipient. No ERC-20 approve.
+- **Redeem:** Burn caller MINUSD and release the same nominal MockUSDC from the vault.
+- **Transfer:** Ordinary SPL Token transfer of MINUSD. Pause does **not** block transfers.
+
+### Controls
+
+- Roles on a Config PDA: admin, pauser, compliance — separate where practical.
+- Pause/unpause: authorized pauser only. Pause stops acquire and redeem only.
+- Freeze/unfreeze: authorized compliance operator only. Frozen sender or recipient cannot acquire, transfer, or redeem MINUSD.
+- Freeze implementation: program is the MINUSD mint freeze authority; `freeze`/`unfreeze` CPI into classic SPL Token **and** a `FrozenOwner` PDA keyed by owner so acquire/redeem match EVM’s `_frozen` mapping. Do not use Token-2022 transfer hooks.
+- Unauthorized privileged instructions fail.
+
+### Safety properties
+
+- Custom errors and logs sufficient to diagnose a failure.
+- Events (or equivalent Anchor events) for acquire, redeem, pause, freeze.
+- Failed instructions leave no partial accounting (Solana transaction atomicity).
+
+### Invariants
+
+- After acquire/redeem sequences, circulating MINUSD supply equals MockUSDC held in the vault. (Rewards do not exist yet.)
+- Transfers do not change total supply or vault collateral.
+- Failed operations do not persist accounting changes.
+
+### Tooling
+
+- Rust + Anchor under `solana/` (`programs/`, `tests/`).
+- Original SPL Token program, not Token-2022.
+- Local `anchor test` is the acceptance bar. Devnet deploy is optional.
+- No TypeScript product CLI in this phase.
+
+### Explicitly out of Phase 2
+
+- TypeScript product CLI, reconciler, Protocol Lab UI
+- Trusted burn-and-mint / bridge
+- `claimYield` / simulated rewards / reward manager
+- Collateral caps
+- Full Solutions Architecture doc set (threat model, handoff template)
